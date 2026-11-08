@@ -8,7 +8,7 @@
 
 ## Google OAuth setup
 
-In Google Cloud Console configure the OAuth consent screen and create a Web application client. Add the deployed callback `https://YOUR-WORKER-DOMAIN/api/auth/google/callback` as an authorized redirect URI. Set the local callback `http://localhost:8787/api/auth/google/callback` when testing locally. The app rejects non-Gmail or unverified Google addresses.
+In Google Cloud Console configure the OAuth consent screen and create a Web application client. The deployed site is `https://working-time.ballaaaa6.workers.dev`; add `https://working-time.ballaaaa6.workers.dev/api/auth/google/callback` as an authorized redirect URI and use that exact value for `GOOGLE_REDIRECT_URI`. Set the local callback `http://localhost:8787/api/auth/google/callback` when testing locally. The app rejects non-Gmail or unverified Google addresses.
 
 ## Create and configure Cloudflare resources
 

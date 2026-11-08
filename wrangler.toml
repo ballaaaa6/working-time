@@ -11,9 +11,9 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "working-time-db"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "6e2ad561-a657-41f3-88fb-598aebeed3d2"
 migrations_dir = "migrations"
 
 [vars]
-APP_URL = "http://localhost:8787"
+APP_URL = "https://working-time.ballaaaa6.workers.dev"
 TIME_ZONE = "Asia/Bangkok"
