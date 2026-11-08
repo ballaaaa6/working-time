@@ -41,6 +41,9 @@ async function recordFor(c: any, userId: string, date: string) { return await c.
 async function leaveFor(c: any, userId: string, date: string) { return await c.env.DB.prepare('SELECT * FROM leave_requests WHERE user_id = ? AND date = ?').bind(userId, date).first() as any; }
 async function dayInfo(c: any, userId: string, date: string) {
   const [schedule, record, leave] = await Promise.all([scheduleFor(c, userId, date), recordFor(c, userId, date), leaveFor(c, userId, date)]);
+  return resolveDay(date, schedule, record, leave);
+}
+function resolveDay(date: string, schedule: Schedule, record: any, leave: any) {
   const today = localDate();
   let status = 'WORKING';
   if (!schedule.is_work_day) status = 'DAY_OFF';
@@ -53,6 +56,21 @@ async function dayInfo(c: any, userId: string, date: string) {
 function monthDates(month: string) { const [y, m] = month.split('-').map(Number); const count = new Date(Date.UTC(y, m, 0)).getUTCDate(); return Array.from({ length: count }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`); }
 function validMonth(v: string | undefined) { return !!v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v); }
 function jsonError(c: any, message: string, code = 400) { return c.json({ error: message }, code); }
+async function monthInfo(c: any, userId: string, month: string) {
+  const first = `${month}-01`, dates = monthDates(month), last = dates[dates.length - 1];
+  const [scheduleResult, attendanceResult, leaveResult] = await Promise.all([
+    c.env.DB.prepare('SELECT weekday, is_work_day, start_time, end_time, late_threshold_minutes FROM work_schedules WHERE user_id = ?').bind(userId).all(),
+    c.env.DB.prepare('SELECT * FROM attendance WHERE user_id = ? AND date BETWEEN ? AND ?').bind(userId, first, last).all(),
+    c.env.DB.prepare('SELECT * FROM leave_requests WHERE user_id = ? AND date BETWEEN ? AND ?').bind(userId, first, last).all()
+  ]);
+  const schedules = new Map<number, Schedule>((scheduleResult.results as Schedule[]).map(s => [s.weekday, s]));
+  const attendance = new Map<string, any>((attendanceResult.results as any[]).map(a => [a.date, a]));
+  const leaves = new Map<string, any>((leaveResult.results as any[]).map(l => [l.date, l]));
+  return dates.map(date => {
+    const day = weekday(date), schedule = schedules.get(day) ?? { weekday: day, is_work_day: day >= 1 && day <= 5 ? 1 : 0, start_time: '09:00', end_time: '18:00', late_threshold_minutes: 15 };
+    return resolveDay(date, schedule, attendance.get(date), leaves.get(date));
+  });
+}
 
 // OAuth and session inspection are public; all application data routes require a valid signed cookie.
 app.use('/api/*', async (c, next) => {
@@ -127,11 +145,11 @@ app.post('/api/attendance/check-out', async c => {
 });
 app.get('/api/attendance', async c => {
   const month = c.req.query('month'); if (!validMonth(month)) return jsonError(c, 'รูปแบบเดือนต้องเป็น YYYY-MM');
-  const user = c.get('user'), dates = monthDates(month!);
-  return c.json({ days: await Promise.all(dates.map(date => dayInfo(c, user.id, date))) });
+  const user = c.get('user');
+  return c.json({ days: await monthInfo(c, user.id, month!) });
 });
 async function summaryFor(c: any, userId: string, month: string) {
-  const days = await Promise.all(monthDates(month).filter(d => d <= localDate()).map(d => dayInfo(c, userId, d)));
+  const days = (await monthInfo(c, userId, month)).filter(d => d.date <= localDate());
   return { present: days.filter(d => d.status === 'CHECKED_IN' || (d.status === 'WORKING' && d.attendance)).length, late: days.filter(d => d.status === 'LATE' && d.attendance?.check_in_at).length, absent: days.filter(d => d.status === 'ABSENT').length, leave: days.filter(d => d.status === 'ON_LEAVE').length };
 }
 app.get('/api/summary', async c => { const month = c.req.query('month'); if (!validMonth(month)) return jsonError(c, 'รูปแบบเดือนต้องเป็น YYYY-MM'); return c.json(await summaryFor(c, c.get('user').id, month!)); });
